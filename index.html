@@ -3,186 +3,125 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gold & Silver</title>
+  <title>buenavida</title>
   <style>
     body {
       margin: 0;
-      height: 100vh;
+      min-height: 100vh;
       background: #0f172a;
       font-family: sans-serif;
+      color: white;
+    }
+    #bar { padding: 20px; text-align: center; }
+    #cards {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       justify-content: center;
       gap: 30px;
-      flex-wrap: wrap;
+      padding: 20px;
     }
     .card {
       width: 220px;
-      height: 220px;
+      padding: 24px 0;
       border-radius: 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);     
+      gap: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     }
     .gold {
-      background: linear-gradient(135deg, #fde68a, #d4a017);
-      color: #422006;
-    }
-    .silver {
-      background: linear-gradient(135deg, #f1f5f9, #94a3b8);
-      color: #1e293b;
-    }
-    .label {
-      font-size: 18px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin: 0;
-    }
-    .price {
-      font-size: 32px;
-      font-weight: bold;
-      margin: 0;
-    }
-    .unit {
-      font-size: 14px;
-      opacity: 0.7;
-      margin: 0;
-    }
-
-#txt {
-  position: fixed;
-  top: 20px;
-  right: 20px;
+  background: linear-gradient(135deg, #fde68a, #d4a017);
   color: #422006;
-  font-size: 24px;
-  font-weight: bold;
-  background: linear-gradient(135deg, #fde68a, #c6b078);
-  padding: 10px 16px;
-  border-radius: 16px;
+}
+.silver {
+  background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+  color: #1e293b;
 }
 
-.currency {
-  font-size: 14px;
-  color: inherit;
-  background: transparent;
-  border: 1px solid currentColor;
-  border-radius: 8px;
-  padding: 4px 4px;
+    .name  { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; margin: 0; }
+    .price { font-size: 32px; font-weight: bold; margin: 0; }
+    .change { font-size: 16px; margin: 0; text-shadow:
+     1px 1px 0 black,
+     1px 1px 0 black,
+     1px 1px 0 black,
+     1px 1px 0 black;
 }
-
-.updated {
-  font-size: 11px;
-  opacity: 0.6;
-  margin: 0;
-}
-
-
+    .up   .change { color: #4ade80; }
+    .down .change { color: #f87171; }
   </style>
 </head>
-  <body>
-  <div class="card gold">
-    
-    <p class="label">Gold</p>
-    <p class="price" id="gold">...</p>
-    <p class="unit">
-    <p class="updated" id="gold-time"></p>  
-  <select class="currency" data-id="gold">
-    <option value="MAD">MAD / oz</option>
-    <option value="EUR">EUR / oz</option>
-    <option value="USD">USD / oz</option>
-  </select>
+<body>
+  <div id="bar">
+    Currency:
+    <select id="currency">
+      <option value="MAD">MAD</option>
+      <option value="EUR">EUR</option>
+      <option value="USD">USD</option>
+    </select>
+    (per oz)
   </div>
 
-  <div class="card silver">
-    <p class="label">Silver</p>
-    <p class="price" id="silver">...</p>
-    <p class="unit">
-    <p class="updated" id="silver-time"></p>  
-  <select class="currency" data-id="silver">
-    <option value="MAD">MAD / oz</option>
-    <option value="EUR">EUR / oz</option>
-    <option value="USD">USD / oz</option>
-  </select>
-  </div>
-<div id="txt"></div>
+  <div id="cards"></div>
 
+  <script>
+    const RATES = { USD: 1, MAD: 9.75, EUR: 0.86 };
+    const METALS = [
+      { symbol: "XAU", name: "Gold", cls: "gold" },
+      { symbol: "XAG", name: "Silver", cls: "silver" }
+    ];
+    let data = [];  
+    let memory = {};
 
+    try { memory = JSON.parse(localStorage.getItem("memory")) || {}; } catch (e) {}
 
-<script>
-  function startTime() {
-    const today = new Date();
-    let h = checkTime(today.getHours());
-    let m = checkTime(today.getMinutes());
-    let s = checkTime(today.getSeconds());
-    document.getElementById('txt').innerHTML = h + ":" + m + ":" + s;
-    setTimeout(startTime, 1000);
-  }
+    async function fetchAll() {
+      const results = await Promise.all(METALS.map(async m => {
+        try {
+          const res = await fetch("https://api.gold-api.com/price/" + m.symbol);
+          const json = await res.json();
+          const price = json.price;
+          const mem = memory[m.symbol] || { price: price, previous: price };
+          if (price !== mem.price) {
+            mem.previous = mem.price;
+            mem.price = price;
+          }
+          memory[m.symbol] = mem;
 
-  function checkTime(i) {
-    if (i < 10) { i = "0" + i; }
-    return i;
-  }
+          return { name: m.name, cls: m.cls, price: mem.price, previous: mem.previous };
+        } catch (e) {
+          return null;
+        }
+      }));
 
-const RATES = { USD: 1, MAD: 9.75, EUR: 0.86 };
-const state = {
-  gold:   { currency: "MAD", usd: 0, time: "" },
-  silver: { currency: "MAD", usd: 0, time: "" }
-};
+      data = results.filter(Boolean);
+      try { localStorage.setItem("memory", JSON.stringify(memory)); } catch (e) {}
+      render();
+    }
 
-try {
-  const saved = JSON.parse(localStorage.getItem("metalState"));
-  if (saved) {
-    for (const id in state) Object.assign(state[id], saved[id]);
-  }
-} catch (e) {}
+    function render() {
+      const rate = RATES[document.getElementById("currency").value];
+      document.getElementById("cards").innerHTML = data.map(item => {
+        const price  = item.price * rate;
+        const change = (item.price - item.previous) * rate;
+        const pct    = item.previous ? (item.price - item.previous) / item.previous * 100 : 0;
+        const up     = change >= 0;
+        const arrow  = up ? "▲" : "▼";
+        const sign   = up ? "+" : "";
 
-function save() {
-  try { localStorage.setItem("metalState", JSON.stringify(state)); } catch (e) {}
-}
+        return `
+          <div class="card ${item.cls} ${up ? "up" : "down"}">
+            <p class="name">${item.name}</p>
+            <p class="price">${price.toFixed(2)}</p>
+            <p class="change">${arrow} ${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%)</p>
+          </div>`;
+      }).join("");
+    }
 
-function render(id) {
-  const s = state[id];
-  if (s.usd) {
-    document.getElementById(id).innerText = (s.usd * RATES[s.currency]).toFixed(2);
-    document.getElementById(id + "-time").innerText = "Updated " + s.time;
-  }
-}
+    document.getElementById("currency").addEventListener("change", render);
 
-async function getPrice(symbol, id) {
-  try {
-    const res = await fetch("https://api.gold-api.com/price/" + symbol);
-    const data = await res.json();
-    state[id].usd = data.price;
-    state[id].time = new Date().toLocaleTimeString();
-    save();
-  } catch (e) {
-  }
-  render(id);
-}
-
-function update() {
-  getPrice("XAU", "gold");
-  getPrice("XAG", "silver");
-}
-
-document.querySelectorAll(".currency").forEach(select => {
-  const id = select.dataset.id;
-  select.value = state[id].currency;
-  select.addEventListener("change", () => {
-    state[id].currency = select.value;
-    save();
-    render(id);
-  });
-});
-
-
-render("gold");
-render("silver");
-update();
-setInterval(update, 10000);
-</script>
+    fetchAll();
+    setInterval(fetchAll, 10000);
+  </script>
 </body>
 </html>
