@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gold & Silver</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      background: #0f172a;
+      font-family: sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: wrap;
+    }
+    .card {
+      width: 220px;
+      height: 220px;
+      border-radius: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);     
+    }
+    .gold {
+      background: linear-gradient(135deg, #fde68a, #d4a017);
+      color: #422006;
+    }
+    .silver {
+      background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+      color: #1e293b;
+    }
+    .label {
+      font-size: 18px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .price {
+      font-size: 32px;
+      font-weight: bold;
+      margin: 0;
+    }
+    .unit {
+      font-size: 14px;
+      opacity: 0.7;
+      margin: 0;
+    }
+
+#txt {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  color: #422006;
+  font-size: 24px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #fde68a, #c6b078);
+  padding: 10px 16px;
+  border-radius: 16px;
+}
+
+.currency {
+  font-size: 14px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 4px 4px;
+}
+
+.updated {
+  font-size: 11px;
+  opacity: 0.6;
+  margin: 0;
+}
+
+
+  </style>
+</head>
+  <body>
+  <div class="card gold">
+    
+    <p class="label">Gold</p>
+    <p class="price" id="gold">...</p>
+    <p class="unit">
+    <p class="updated" id="gold-time"></p>  
+  <select class="currency" data-id="gold">
+    <option value="MAD">MAD / oz</option>
+    <option value="EUR">EUR / oz</option>
+    <option value="USD">USD / oz</option>
+  </select>
+  </div>
+
+  <div class="card silver">
+    <p class="label">Silver</p>
+    <p class="price" id="silver">...</p>
+    <p class="unit">
+    <p class="updated" id="silver-time"></p>  
+  <select class="currency" data-id="silver">
+    <option value="MAD">MAD / oz</option>
+    <option value="EUR">EUR / oz</option>
+    <option value="USD">USD / oz</option>
+  </select>
+  </div>
+<div id="txt"></div>
+
+
+
+<script>
+  function startTime() {
+    const today = new Date();
+    let h = checkTime(today.getHours());
+    let m = checkTime(today.getMinutes());
+    let s = checkTime(today.getSeconds());
+    document.getElementById('txt').innerHTML = h + ":" + m + ":" + s;
+    setTimeout(startTime, 1000);
+  }
+
+  function checkTime(i) {
+    if (i < 10) { i = "0" + i; }
+    return i;
+  }
+
+const RATES = { USD: 1, MAD: 9.75, EUR: 0.86 };
+const state = {
+  gold:   { currency: "MAD", usd: 0, time: "" },
+  silver: { currency: "MAD", usd: 0, time: "" }
+};
+
+try {
+  const saved = JSON.parse(localStorage.getItem("metalState"));
+  if (saved) {
+    for (const id in state) Object.assign(state[id], saved[id]);
+  }
+} catch (e) {}
+
+function save() {
+  try { localStorage.setItem("metalState", JSON.stringify(state)); } catch (e) {}
+}
+
+function render(id) {
+  const s = state[id];
+  if (s.usd) {
+    document.getElementById(id).innerText = (s.usd * RATES[s.currency]).toFixed(2);
+    document.getElementById(id + "-time").innerText = "Updated " + s.time;
+  }
+}
+
+async function getPrice(symbol, id) {
+  try {
+    const res = await fetch("https://api.gold-api.com/price/" + symbol);
+    const data = await res.json();
+    state[id].usd = data.price;
+    state[id].time = new Date().toLocaleTimeString();
+    save();
+  } catch (e) {
+  }
+  render(id);
+}
+
+function update() {
+  getPrice("XAU", "gold");
+  getPrice("XAG", "silver");
+}
+
+document.querySelectorAll(".currency").forEach(select => {
+  const id = select.dataset.id;
+  select.value = state[id].currency;
+  select.addEventListener("change", () => {
+    state[id].currency = select.value;
+    save();
+    render(id);
+  });
+});
+
+
+render("gold");
+render("silver");
+update();
+setInterval(update, 10000);
+</script>
+</body>
+</html>
