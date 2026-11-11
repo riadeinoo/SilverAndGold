@@ -7,6 +7,7 @@
   <style>
     body { margin: 0; min-height: 100vh; background: #0f172a; font-family: sans-serif; color: white; }
     #bar { padding: 20px; text-align: center; }
+    #msg { text-align: center; color: #fca5a5; }
     #cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; padding: 20px; }
     .card { width: 220px; padding: 24px 0; border-radius: 24px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
     .card p { margin: 10px 0; }
@@ -17,6 +18,7 @@
     .change { text-shadow: 1px 1px 0 black; }
     .up   .change { color: #4ade80; }
     .down .change { color: #f87171; }
+    .time   { font-size: 12px; opacity: .7; }
   </style>
 </head>
 <body>
@@ -29,45 +31,56 @@
     </select>
     (per oz)
   </div>
+  <div id="msg">Loading…</div>
   <div id="cards"></div>
 
   <script>
-    const RATES = { USD: 1, MAD: 9.75, EUR: 0.86 };
-    const METALS = { XAU: ["Gold", "gold"], XAG: ["Silver", "silver"] };
-    let memory = {}, data = [];
+    const API = "https://api.gold-api.com/price/";
+    const METALS = { XAU: "gold", XAG: "silver" }; 
+    let memory = {};
 
     try { memory = JSON.parse(localStorage.memory); } catch {}
+    try { currency.value = localStorage.currency || "MAD"; } catch {}
 
     async function update() {
-      data = (await Promise.all(Object.entries(METALS).map(async ([sym, [name, cls]]) => {
-        try {
-          const { price } = await (await fetch("https://api.gold-api.com/price/" + sym)).json();
-          const m = memory[sym] ||= { price, previous: price };
-          if (price !== m.price) [m.previous, m.price] = [m.price, price];
-          return { name, cls, ...m };
-        } catch {}
-      }))).filter(Boolean);
+      const cur = currency.value;
 
-      try { localStorage.memory = JSON.stringify(memory); } catch {}
-      render();
-    }
+      // US-01: one GET per tracked metal, in the selected currency (US-03)
+      const received = await Promise.all(Object.keys(METALS).map(sym =>
+        fetch(API + sym + "/" + cur).then(r => r.ok ? r.json() : null).catch(() => null)
+      ));
+      const items = received.filter(Boolean);
 
-    function render() {
-      const rate = RATES[currency.value];
-      cards.innerHTML = data.map(({ name, cls, price, previous }) => {
-        const diff = price - previous;
-        const pct = previous ? diff / previous * 100 : 0;
+      msg.textContent = items.length < received.length
+        ? "Could not load all prices from the API. Retrying in 10 seconds…"
+        : "";
+
+
+      cards.innerHTML = items.map(item => {
+        const m = memory[item.symbol + cur] ||= { price: item.price, previous: item.price };
+        if (item.price !== m.price) [m.previous, m.price] = [m.price, item.price];
+
+        const diff = m.price - m.previous;
+        const pct = m.previous ? diff / m.previous * 100 : 0;
         const up = diff >= 0, sign = up ? "+" : "";
+
         return `
-          <div class="card ${cls} ${up ? "up" : "down"}">
-            <p class="name">${name}</p>
-            <p class="price">${(price * rate).toFixed(2)}</p>
-            <p class="change">${up ? "▲" : "▼"} ${sign}${(diff * rate).toFixed(2)} (${sign}${pct.toFixed(2)}%)</p>
+          <div class="card ${METALS[item.symbol]} ${up ? "up" : "down"}">
+            <p class="name">${item.name}</p>
+            <p class="price">${item.price.toFixed(2)} ${cur}</p>
+            <p class="change">${up ? "▲" : "▼"} ${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)</p>
+            <p class="time">Updated ${new Date(item.updatedAt).toLocaleString()}</p>
           </div>`;
       }).join("");
+
+      try { localStorage.memory = JSON.stringify(memory); } catch {}
     }
 
-    currency.onchange = render;
+    currency.onchange = () => {
+      try { localStorage.currency = currency.value; } catch {}
+      update();
+    };
+
     update();
     setInterval(update, 10000);
   </script>
