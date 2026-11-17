@@ -1,93 +1,276 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>buenavida</title>
-  <style>
-    body { margin: 0; min-height: 100vh; background: #0f172a; font-family: sans-serif; color: white; }
-    #bar { padding: 20px; text-align: center; }
-    #msg { text-align: center; color: #fca5a5; }
-    #cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; padding: 20px; }
-    .card { width: 220px; padding: 24px 0; border-radius: 24px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-    .card p { margin: 10px 0; }
-    .gold   { background: linear-gradient(135deg, #fde68a, #d4a017); color: #422006; }
-    .silver { background: linear-gradient(135deg, #f1f5f9, #94a3b8); color: #1e293b; }
-    .name   { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
-    .price  { font-size: 32px; font-weight: bold; }
-    .change { text-shadow: 1px 1px 0 black; }
-    .up   .change { color: #4ade80; }
-    .down .change { color: #f87171; }
-    .time   { font-size: 12px; opacity: .7; }
-  </style>
+  <title>Al Andalous — Back-office</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="bar">
-    Currency:
-    <select id="currency">
-      <option>MAD</option>
-      <option>EUR</option>
-      <option>USD</option>
-    </select>
-    (per oz)
-  </div>
-  <div id="msg">Loading…</div>
-  <div id="cards"></div>
 
-  <script>
-    const API = "https://xaus.com/api/v1/spot";
-    let memory = {};
+  <!-- ============ EN-TÊTE ============ -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">◆</span>
+      <div>
+        <h1>Al Andalous</h1>
+        <p class="brand-sub">Back-office · catalogue</p>
+      </div>
+    </div>
 
-    try { memory = JSON.parse(localStorage.memory); } catch {}
-    try { currency.value = localStorage.currency || "USD"; } catch {}
+    <div class="header-actions">
+      <label class="field-inline" for="currency">
+        Devise
+        <select id="currency">
+          <option value="MAD">MAD</option>
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+        </select>
+      </label>
 
-    async function update() {
-      const cur = currency.value; 
-      let d = null;
-      try {
-        const res = await fetch(API + "?currency=" + cur + "&compact=1");
-        if (res.ok) d = await res.json();
-      } catch {}
+      <button type="button" id="theme-toggle" class="btn btn-ghost" aria-label="Changer de thème">
+        <span id="theme-icon" aria-hidden="true">☾</span>
+        <span id="theme-label">Thème</span>
+      </button>
 
-      if (!d || !d.xau) {
-        cards.innerHTML = "";
-        msg.textContent = "Could not load prices from the API. Retrying in 60 seconds…";
-        return;
-      }
-      msg.textContent = "";
+      <button type="button" id="btn-add" class="btn btn-primary">+ Ajouter un article</button>
+    </div>
+  </header>
 
-      const items = [
-        { symbol: "XAU", name: "Gold",   cls: "gold",   price: d.xau.price },
-        { symbol: "XAG", name: "Silver", cls: "silver", price: d.silver_usd_oz * d.fx_rate }
-      ].filter(item => item.price);
+  <main class="app-main">
 
-      cards.innerHTML = items.map(item => {
-        const m = memory[item.symbol + cur] ||= { price: item.price, previous: item.price };
-        if (item.price !== m.price) [m.previous, m.price] = [m.price, item.price];
+    <!-- ============ BANDEAUX ============ -->
+    <!-- Bandeau hors-ligne / cache (US-07) : texte à remplir en JS, par exemple
+         « données du 17/11/2026 14:30 (hors-ligne) » -->
+    <div id="offline-banner" class="banner banner-warning" role="status" hidden>
+      <span id="offline-banner-text"></span>
+      <button type="button" id="btn-banner-refresh" class="btn btn-small">Rafraîchir</button>
+    </div>
 
-        const diff = m.price - m.previous;
-        const pct = m.previous ? diff / m.previous * 100 : 0;
-        const up = diff >= 0, sign = up ? "+" : "";
+    <!-- Message de succès / information (US-06) -->
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
 
-        return `
-          <div class="card ${item.cls} ${up ? "up" : "down"}">
-            <p class="name">${item.name}</p>
-            <p class="price">${item.price.toFixed(2)} ${cur}</p>
-            <p class="change">${up ? "▲" : "▼"} ${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)</p>
-            <p class="time">Updated ${new Date(d.updated_at).toLocaleString()}</p>
-          </div>`;
-      }).join("");
+    <!-- ============ BARRE D'OUTILS (US-02) ============ -->
+    <section class="toolbar" aria-label="Recherche, filtre et tri">
+      <label class="field">
+        <span class="field-label">Recherche</span>
+        <input type="search" id="search" placeholder="Rechercher par titre…" autocomplete="off">
+      </label>
 
-      try { localStorage.memory = JSON.stringify(memory); } catch {}
-    }
+      <label class="field">
+        <span class="field-label">Statut</span>
+        <select id="filter-status">
+          <option value="all">Tous</option>
+          <option value="available">Disponible</option>
+          <option value="reserved">Réservé</option>
+          <option value="sold">Vendu</option>
+        </select>
+      </label>
 
-    currency.onchange = () => {
-      try { localStorage.currency = currency.value; } catch {}
-      update();
-    };
+      <label class="field">
+        <span class="field-label">Trier par</span>
+        <select id="sort">
+          <option value="title-asc">Titre (A → Z)</option>
+          <option value="title-desc">Titre (Z → A)</option>
+          <option value="price-asc">Prix croissant</option>
+          <option value="price-desc">Prix décroissant</option>
+          <option value="date-desc">Plus récents</option>
+          <option value="date-asc">Plus anciens</option>
+        </select>
+      </label>
 
-    update();
-    setInterval(update, 60000);
-  </script>
+      <label class="check">
+        <input type="checkbox" id="filter-favorites">
+        <span>Favoris uniquement</span>
+      </label>
+
+      <button type="button" id="btn-refresh" class="btn">
+        <span id="refresh-spinner" class="spinner spinner-small" hidden aria-hidden="true"></span>
+        Rafraîchir
+      </button>
+    </section>
+
+    <p id="result-count" class="result-count" aria-live="polite"></p>
+
+    <!-- ============ ÉTATS D'ÉCRAN (US-06) ============
+         Un seul de ces blocs doit être visible à la fois :
+         loading / error / empty / list. Utilise l'attribut hidden. -->
+
+    <!-- Chargement : squelettes -->
+    <section id="state-loading" class="state-loading" aria-label="Chargement" hidden>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </section>
+
+    <!-- Erreur différenciée : 404, 500, hors-ligne, timeout… -->
+    <section id="state-error" class="state-box state-error" role="alert" hidden>
+      <div class="state-icon" id="error-icon" aria-hidden="true">⚠</div>
+      <h2 id="error-title">Une erreur est survenue</h2>
+      <p id="error-message"></p>
+      <p id="error-detail" class="state-detail"></p>
+      <button type="button" id="btn-retry" class="btn btn-primary">Réessayer</button>
+    </section>
+
+    <!-- Vide : aucun article OU aucun résultat -->
+    <section id="state-empty" class="state-box state-empty" hidden>
+      <div class="state-icon" aria-hidden="true">◇</div>
+      <h2 id="empty-title">Aucun article</h2>
+      <p id="empty-message"></p>
+      <button type="button" id="btn-reset-filters" class="btn" hidden>Réinitialiser les filtres</button>
+      <button type="button" id="btn-empty-add" class="btn btn-primary" hidden>+ Ajouter un article</button>
+    </section>
+
+    <!-- Succès : la liste -->
+    <section id="list" class="cards" aria-label="Liste des articles" hidden></section>
+
+    <!-- ============ PANNEAU RÉSEAU (US-09, bonus) ============ -->
+    <details id="network-panel" class="network-panel">
+      <summary>Panneau réseau <span id="network-count" class="pill">0</span></summary>
+      <div class="network-actions">
+        <button type="button" id="btn-network-clear" class="btn btn-small">Vider</button>
+      </div>
+      <div class="table-wrap">
+        <table class="network-table">
+          <thead>
+            <tr>
+              <th>Méthode</th>
+              <th>URL</th>
+              <th>Statut</th>
+              <th>Durée</th>
+            </tr>
+          </thead>
+          <tbody id="network-rows"></tbody>
+        </table>
+      </div>
+      <p id="network-empty" class="state-detail">Aucune requête pour le moment.</p>
+    </details>
+
+  </main>
+
+  <!-- ============ MODÈLE D'UNE CARTE (clonée en JS) ============
+       Remplis les champs avec textContent, jamais innerHTML. -->
+  <template id="card-template">
+    <article class="card" data-id="">
+      <header class="card-head">
+        <h3 class="card-title" data-field="title"></h3>
+        <button type="button" class="icon-btn" data-action="favorite" aria-pressed="false" aria-label="Ajouter aux favoris">☆</button>
+      </header>
+
+      <p class="card-desc" data-field="description"></p>
+
+      <div class="card-meta">
+        <span class="card-price" data-field="price"></span>
+        <span class="badge" data-field="status"></span>
+      </div>
+      <p class="card-date" data-field="date"></p>
+
+      <footer class="card-actions">
+        <button type="button" class="btn btn-small" data-action="detail">Détail</button>
+        <button type="button" class="btn btn-small" data-action="edit">Modifier</button>
+        <button type="button" class="btn btn-small" data-action="patch-status">Changer le statut</button>
+        <button type="button" class="btn btn-small" data-action="patch-price">Changer le prix</button>
+        <button type="button" class="btn btn-small btn-danger" data-action="delete">Supprimer</button>
+      </footer>
+
+      <!-- Retour visuel pendant une requête sur cette carte -->
+      <div class="card-busy" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span>En cours…</span>
+      </div>
+    </article>
+  </template>
+
+  <!-- ============ MODALE : FORMULAIRE CRÉER / MODIFIER (US-03, US-04) ============ -->
+  <dialog id="dialog-form" class="dialog" aria-labelledby="form-title">
+    <form id="item-form" novalidate>
+      <h2 id="form-title">Ajouter un article</h2>
+      <p id="form-mode-hint" class="state-detail"></p>
+
+      <input type="hidden" id="form-id">
+
+      <label class="field">
+        <span class="field-label">Titre <small>(3 à 80 caractères)</small></span>
+        <input type="text" id="form-title-input" name="title" maxlength="200" autocomplete="off">
+        <span class="field-error" id="error-title-input" role="alert"></span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Description <small>(10 caractères minimum)</small></span>
+        <textarea id="form-description" name="description" rows="4"></textarea>
+        <span class="field-error" id="error-description" role="alert"></span>
+      </label>
+
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">Prix <small>(supérieur à 0)</small></span>
+          <input type="number" id="form-price" name="price" step="0.01" inputmode="decimal">
+          <span class="field-error" id="error-price" role="alert"></span>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Statut</span>
+          <select id="form-status" name="status">
+            <option value="available">Disponible</option>
+            <option value="reserved">Réservé</option>
+            <option value="sold">Vendu</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Erreur renvoyée par l'API : la saisie est conservée -->
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" id="form-cancel" class="btn">Annuler</button>
+        <button type="submit" id="form-submit" class="btn btn-primary">
+          <span id="form-spinner" class="spinner spinner-small" hidden aria-hidden="true"></span>
+          <span id="form-submit-label">Enregistrer</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ MODALE : CONFIRMATION DE SUPPRESSION (US-05) ============ -->
+  <dialog id="dialog-confirm" class="dialog dialog-small" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Supprimer cet article ?</h2>
+    <p id="confirm-message"></p>
+    <div class="dialog-actions">
+      <button type="button" id="confirm-cancel" class="btn">Annuler</button>
+      <button type="button" id="confirm-ok" class="btn btn-danger">Supprimer</button>
+    </div>
+  </dialog>
+
+  <!-- ============ MODALE : DÉTAIL D'UN ARTICLE (US-02, GET /:id) ============ -->
+  <dialog id="dialog-detail" class="dialog" aria-labelledby="detail-title">
+    <div id="detail-loading" class="state-box" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <p>Chargement du détail…</p>
+    </div>
+
+    <div id="detail-error" class="state-box state-error" role="alert" hidden>
+      <h2>Détail indisponible</h2>
+      <p id="detail-error-message"></p>
+      <button type="button" id="detail-retry" class="btn btn-primary">Réessayer</button>
+    </div>
+
+    <div id="detail-content" hidden>
+      <h2 id="detail-title"></h2>
+      <p id="detail-description"></p>
+      <dl class="detail-grid">
+        <dt>Prix</dt><dd id="detail-price"></dd>
+        <dt>Statut</dt><dd id="detail-status"></dd>
+        <dt>Date</dt><dd id="detail-date"></dd>
+        <dt>Identifiant</dt><dd id="detail-id"></dd>
+      </dl>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" id="detail-close" class="btn">Fermer</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
