@@ -25,6 +25,7 @@
   <div id="bar">
     Currency:
     <select id="currency">
+      <option>MAD</option>
       <option>EUR</option>
       <option>USD</option>
     </select>
@@ -34,24 +35,31 @@
   <div id="cards"></div>
 
   <script>
-    const API = "https://api.gold-api.com/price/";
-    const METALS = { XAU: "gold", XAG: "silver" }; 
+    const API = "https://xaus.com/api/v1/spot";
     let memory = {};
 
     try { memory = JSON.parse(localStorage.memory); } catch {}
     try { currency.value = localStorage.currency || "USD"; } catch {}
 
     async function update() {
-      const cur = currency.value;
-      const received = await Promise.all(Object.keys(METALS).map(sym =>
-        fetch(API + sym + "/" + cur).then(r => r.ok ? r.json() : null).catch(() => null)
-      ));
-      const items = received.filter(Boolean);
+      const cur = currency.value; 
+      let d = null;
+      try {
+        const res = await fetch(API + "?currency=" + cur + "&compact=1");
+        if (res.ok) d = await res.json();
+      } catch {}
 
-      msg.textContent = items.length < received.length
-        ? "Could not load all prices from the API. Retrying in 10 seconds…"
-        : "";
+      if (!d || !d.xau) {
+        cards.innerHTML = "";
+        msg.textContent = "Could not load prices from the API. Retrying in 60 seconds…";
+        return;
+      }
+      msg.textContent = "";
 
+      const items = [
+        { symbol: "XAU", name: "Gold",   cls: "gold",   price: d.xau.price },
+        { symbol: "XAG", name: "Silver", cls: "silver", price: d.silver_usd_oz * d.fx_rate }
+      ].filter(item => item.price);
 
       cards.innerHTML = items.map(item => {
         const m = memory[item.symbol + cur] ||= { price: item.price, previous: item.price };
@@ -62,11 +70,11 @@
         const up = diff >= 0, sign = up ? "+" : "";
 
         return `
-          <div class="card ${METALS[item.symbol]} ${up ? "up" : "down"}">
+          <div class="card ${item.cls} ${up ? "up" : "down"}">
             <p class="name">${item.name}</p>
             <p class="price">${item.price.toFixed(2)} ${cur}</p>
             <p class="change">${up ? "▲" : "▼"} ${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)</p>
-            <p class="time">Updated ${new Date(item.updatedAt).toLocaleString()}</p>
+            <p class="time">Updated ${new Date(d.updated_at).toLocaleString()}</p>
           </div>`;
       }).join("");
 
@@ -76,10 +84,10 @@
     currency.onchange = () => {
       try { localStorage.currency = currency.value; } catch {}
       update();
-    }
+    };
 
     update();
-    setInterval(update, 10000);
+    setInterval(update, 60000);
   </script>
 </body>
 </html>
